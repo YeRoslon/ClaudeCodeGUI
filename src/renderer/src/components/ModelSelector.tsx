@@ -1,27 +1,23 @@
-import { MODEL_OPTIONS } from '@shared/types'
+import type { ModelConfig } from '@shared/types'
 
 interface Props {
   model: string
+  models: ModelConfig[]
   onChange: (model: string) => void
 }
 
-const LABELS: Record<string, string> = {
-  sonnet: 'Sonnet',
-  opus: 'Opus',
-  haiku: 'Haiku'
-}
-
-export default function ModelSelector({ model, onChange }: Props): React.JSX.Element {
+export default function ModelSelector({ model, models, onChange }: Props): React.JSX.Element {
+  const validModel = models.some((m) => m.id === model) ? model : (models[0]?.id ?? '')
   return (
     <select
       className="model-select"
-      value={model}
+      value={validModel}
       onChange={(e) => onChange(e.target.value)}
       title="选择模型"
     >
-      {MODEL_OPTIONS.map((m) => (
-        <option key={m} value={m}>
-          {LABELS[m] ?? m}
+      {models.map((m) => (
+        <option key={m.id} value={m.id}>
+          {m.label}
         </option>
       ))}
     </select>

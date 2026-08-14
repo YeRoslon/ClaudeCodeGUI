@@ -1,4 +1,5 @@
 import type { Chat } from '@shared/types'
+import { useI18n } from '../i18n'
 
 interface Props {
   chats: Chat[]
@@ -8,6 +9,7 @@ interface Props {
   onSelect: (chatId: string) => void
   onDelete: (chatId: string) => void
   onPickGlobalFolder: () => void
+  onOpenSettings: () => void
 }
 
 export default function Sidebar({
@@ -17,12 +19,14 @@ export default function Sidebar({
   onNewChat,
   onSelect,
   onDelete,
-  onPickGlobalFolder
+  onPickGlobalFolder,
+  onOpenSettings
 }: Props): React.JSX.Element {
+  const { t, lang, setLang } = useI18n()
   return (
     <aside className="sidebar">
       <button className="new-chat-btn" onClick={onNewChat}>
-        + New Chat
+        {t('newChat')}
       </button>
       <div className="chat-list">
         {chats.map((chat) => (
@@ -44,18 +48,21 @@ export default function Sidebar({
             </button>
           </div>
         ))}
-        {chats.length === 0 && <div className="chat-empty">暂无聊天</div>}
+        {chats.length === 0 && <div className="chat-empty">{t('noChats')}</div>}
       </div>
       <div className="sidebar-footer">
-        <button className="folder-btn" onClick={onPickGlobalFolder}>
-          <span className="folder-icon">📁</span>
-          {lastProjectPath ? (
-            <span className="folder-path" title={lastProjectPath}>
-              {lastProjectPath}
-            </span>
-          ) : (
-            <span>Choose Project Folder</span>
-          )}
+        <button className="folder-btn" onClick={onPickGlobalFolder} title={lastProjectPath ?? undefined}>
+          <span className="folder-path">{lastProjectPath ?? t('chooseProjectFolder')}</span>
+        </button>
+        <button
+          className="lang-btn"
+          onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
+          title="切换语言 / Switch language"
+        >
+          {t('switchTo')}
+        </button>
+        <button className="lang-btn" onClick={onOpenSettings} title={t('settingsTitle')}>
+          {t('settings')}
         </button>
       </div>
     </aside>

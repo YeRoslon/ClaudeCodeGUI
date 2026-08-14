@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { Message } from '@shared/types'
+import { useI18n } from '../i18n'
 import MessageBubble from './MessageBubble'
 import MarkdownContent from './MarkdownContent'
 
@@ -16,6 +17,7 @@ export default function MessageList({
   errorText,
   isStreaming
 }: Props): React.JSX.Element {
+  const { t } = useI18n()
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -29,7 +31,7 @@ export default function MessageList({
       ))}
       {isStreaming && (
         <div className="msg-row assistant">
-          <div className="msg-avatar">Claude</div>
+          <div className="msg-avatar">{t('claude')}</div>
           <div className="msg-bubble streaming">
             {streamingText ? <MarkdownContent text={streamingText} /> : <span className="placeholder">…</span>}
             <span className="cursor" />
@@ -38,7 +40,7 @@ export default function MessageList({
       )}
       {!isStreaming && errorText && (
         <div className="msg-row assistant">
-          <div className="msg-avatar">Claude</div>
+          <div className="msg-avatar">{t('claude')}</div>
           <div className="msg-bubble error">{errorText}</div>
         </div>
       )}

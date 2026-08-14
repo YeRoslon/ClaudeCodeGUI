@@ -1,0 +1,132 @@
+Claude Code GUI 设计说明
+
+一、这个软件是干什么的
+
+一句话：把电脑上已经装好的命令行工具 Claude Code（claude 命令）包装成一个图形界面聊天软件。
+
+用户不用再对着黑乎乎的终端敲命令，而是像用聊天软件一样：
+1. 左边有一个聊天列表，可以新建、切换、删除多个会话；
+2. 中间是聊天消息，Claude 的回复会像打字一样一条条流出来；
+3. 顶部可以切换模型（DeepSeek V4 Flash、DeepSeek Chat）；
+4. 侧边栏底部可以选一个工作目录（Claude 在这个文件夹里干活，全局生效）；
+5. 直接打字就能联网查询（比如查天气、搜资料）；
+6. 侧边栏底部的设置里可以直接配每个模型的接口地址和 API Key，也可以加新模型；
+7. 关掉软件再打开，历史聊天还在。
+
+底层真正干活的是本机安装的 claude 命令，软件只是负责做三件事：界面、调命令、存数据。
+
+
+二、整体架构：三层结构
+
+整个程序分成三层，各管各的事：
+
+第一层：聊天界面（React）
+    用户看到和操作的一切，也就是窗口里的内容。
+
+第二层：preload 桥接层
+    一道安全闸门，界面只能通过它和主进程说话，不能直接碰系统。
+
+第三层：Electron 主进程
+    窗口管理、调用 claude 命令、读写数据。
+
+最底下是：claude 命令行工具
+    真正的 AI 大脑。
+
+这个顺序从上到下是：界面传给 preload，preload 传给主进程，主进程再调用 claude。
+
+这样设计的原因（这也是 Electron 官方推荐的安全写法）：
+1. 界面默认拿不到电脑的文件系统和命令行，防止网页代码乱搞电脑；
+2. 所有危险操作（启动进程、读写文件）都收口在主进程，逻辑集中好维护；
+3. 界面只处理一种简单事件，主进程已经把 claude 输出的复杂 JSON 消化成了简单事件，界面代码就很好写。
+
+
+三、技术选型及理由
+
+1. Electron（桌面应用外壳）
+   理由：能打开窗口，能直接用 Node.js 启动子进程（这是调 claude 的前提），跨平台，生态成熟。
+
+2. React 加 TypeScript（界面和代码类型）
+   理由：React 写聊天界面这种数据一直在变的界面很方便；TypeScript 给数据定义类型，写的时候能提前发现低级错误。
+
+3. electron-vite（构建和开发工具）
+   理由：把主进程、preload、渲染进程三块代码一次打包，开发时改代码能热更新，比手动配置 webpack 简单。
+
+4. react-markdown（渲染 Claude 的回复）
+   理由：Claude 回复是 Markdown 格式（带标题、列表、代码块），这个库一行代码就能渲染成网页，不用自己写解析器。
+
+5. 数据用 JSON 文件存储，不用数据库
+   理由：聊天记录量不大，一个 JSON 文件足够；不用装数据库，软件更轻。聊天记录放 chats.json，模型配置放 config.json，都在 Electron 的 userData 目录里，备份两个文件就全回来了。
+
+6. 不用 Anthropic 官方 HTTP API，只调本机 claude 命令
+   理由：需求文档明确要求；而且用户已经登录好了 claude，凭据现成的，直接调命令最省事。
+
+
+四、文件结构
+
+D:\chatGUI 目录下：
+
+package.json               项目配置加依赖清单加启动命令
+electron.vite.config.ts    构建配置（三块代码怎么打包）
+tsconfig.json 等           TypeScript 配置
+README.md                  使用说明
+
+src 文件夹（源码）下面分四个子文件夹：
+
+shared 文件夹
+    types.ts               主进程和界面共用的类型定义（聊天、消息、事件）
+
+main 文件夹（主进程，只有它有权限碰文件和命令）
+    index.ts               启动窗口、注册所有接口、把事件转发给界面
+    claudeRunner.ts        核心：启动 claude 命令、解析流式输出
+    store.ts               聊天记录读写（chats.json）加模型配置读写（config.json）
+
+preload 文件夹（桥接层）
+    index.ts               把主进程的功能暴露成 window.api 给界面用
+    index.d.ts             类型声明，让界面写代码时有提示
+
+renderer 文件夹（界面，React）
+    index.html             页面骨架
+    src 文件夹
+        main.tsx           程序入口
+        App.tsx            顶层状态：聊天列表、正在流式输出的文字、错误
+        styles.css         全部样式（深色简洁风）
+        components 文件夹   六个小组件
+            Sidebar.tsx        左侧聊天列表
+            ChatView.tsx       右边聊天面板的骨架
+            MessageList.tsx    消息滚动区（含流式占位）
+            MessageBubble.tsx  单条消息气泡
+            Composer.tsx       底部输入框（Enter 发送）
+            ModelSelector.tsx  模型下拉框
+            MarkdownContent.tsx Markdown 渲染
+
+
+五、核心流程：发一条消息，发生了什么
+
+1. 用户在输入框打字，按 Enter；
+2. 界面通过 window.api.send() 把消息发给主进程；
+3. 主进程先把这条用户消息写进 JSON 存起来，再交给 ClaudeRunner；
+4. ClaudeRunner 用 Node 的 spawn 启动 claude 命令，参数用数组传（绝不拼字符串，防止命令注入）。参数大概长这样：
+   claude -p --model deepseek-v4-flash --output-format stream-json --verbose --include-partial-messages --allowedTools "WebSearch WebFetch"
+   用户消息通过 stdin 管道喂给 claude（本机这个版本的 claude 不接受把消息当命令行参数，必须走 stdin）。--allowedTools 放开了联网搜索和网页抓取，所以直接问天气、搜资料都行。
+5. claude 边想边把结果一行行 JSON 输出，ClaudeRunner 逐行解析：
+   - system/init 行里能拿到 session_id（一个会话的身份证）；
+   - stream_event 行里能拿到一小段文本增量（像打字机一样）；
+   - result 行表示回复结束。
+6. 每一步都立刻推给界面，界面收到就把文字一点点拼出来，所以能看到流式输出的效果；
+7. 回复结束后，主进程把这段回复也写进 JSON，同时把 session_id 记住。
+
+多轮对话的秘密：同一个聊天第二次发消息时，会加上 --resume 加上次的 session_id，意思是接着上次那场对话继续说，Claude 能记住上文。所以软件不需要每次把整段历史重新发给 Claude。
+
+
+六、我主动放弃了什么，为什么
+
+1. 放弃了直接调 Anthropic API。需求要求用本地 CLI，而且能直接用现成登录凭据。
+2. 放弃了数据库。数据量小，JSON 够了，越简单越不容易出错。
+3. 放弃了展示 Claude 的工具调用过程（比如它看了哪个文件、跑了什么命令）。界面只关心最终文本，MVP 先跑通再说。
+4. 放弃了代码高亮。react-markdown 能显示代码块但默认没高亮，MVP 阶段可读性够用。
+5. 放弃了 MCP、多窗口、设置页、账号系统、云同步等一堆功能。需求文档里的 MVP 范围明确划掉了，避免贪多嚼不烂。
+6. 放弃了用 claude.cmd 命令。Windows 上 .cmd 要经过 cmd.exe 转发，中文消息可能乱码；改用 npm 全局安装的原生 claude.exe，参数直接传，无编码问题。
+7. 放弃了把历史聊天每次全量发给 Claude。用 session_id 续聊，省 token 又快。
+8. 放弃了让界面直接碰文件系统、进程。全部走 preload 收口，更安全。
+
+一句话总结设计原则：能跑通，大于功能正确，大于界面好看，大于功能多。先把界面、调 claude、流式回复、记住会话、多会话、切模型、本地存档这一条链路做扎实，其余都是锦上添花。

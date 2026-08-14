@@ -1,14 +1,19 @@
 import { useEffect, useState } from 'react'
-import type { AppState } from '@shared/types'
+import type { AppState, ModelConfig } from '@shared/types'
+import { useI18n } from './i18n'
 import Sidebar from './components/Sidebar'
 import ChatView from './components/ChatView'
+import SettingsModal from './components/SettingsModal'
 
 export default function App(): React.JSX.Element {
+  const { t } = useI18n()
   const [state, setState] = useState<AppState>({
     chats: [],
     activeChatId: null,
     lastProjectPath: null
   })
+  const [models, setModels] = useState<ModelConfig[]>([])
+  const [showSettings, setShowSettings] = useState(false)
   const [streaming, setStreaming] = useState<Record<string, string>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -16,6 +21,7 @@ export default function App(): React.JSX.Element {
 
   useEffect(() => {
     void window.api.getState().then(setState)
+    void window.api.getModels().then(setModels)
     const offEvents = window.api.onClaudeEvent((ev) => {
       switch (ev.type) {
         case 'text-delta':
@@ -99,15 +105,18 @@ export default function App(): React.JSX.Element {
     await window.api.updateModel(activeChat.id, model)
   }
 
-  const handlePickFolder = async (): Promise<void> => {
-    if (!activeChat) return
-    const dir = await window.api.pickFolder()
-    if (dir) await window.api.setProjectPath(activeChat.id, dir)
+  const handlePickGlobalFolder = async (): Promise<void> => {
+    await window.api.pickFolder()
   }
 
-  const handlePickGlobalFolder = async (): Promise<void> => {
-    const dir = await window.api.pickFolder()
-    if (dir) return
+  const handleSaveModels = async (list: ModelConfig[]): Promise<void> => {
+    const saved = await window.api.saveModels(list)
+    setModels(saved)
+    // 当前聊天选中的模型被删了，回退到第一个模型
+    if (activeChat && !saved.some((m) => m.id === activeChat.model)) {
+      const fallback = saved[0]
+      if (fallback) await window.api.updateModel(activeChat.id, fallback.id)
+    }
   }
 
   const isStreaming = activeChat ? streaming[activeChat.id] !== undefined : false
@@ -124,26 +133,34 @@ export default function App(): React.JSX.Element {
         onSelect={handleSelect}
         onDelete={handleDelete}
         onPickGlobalFolder={handlePickGlobalFolder}
+        onOpenSettings={() => setShowSettings(true)}
       />
       <main className="main">
         {activeChat ? (
           <ChatView
             chat={activeChat}
+            models={models}
             streamingText={streamingText}
             errorText={errorText}
             isStreaming={isStreaming}
             onSend={handleSend}
             onStop={handleStop}
             onModelChange={handleModelChange}
-            onPickFolder={handlePickFolder}
           />
         ) : (
           <div className="empty">
             <h2>Claude Code GUI</h2>
-            <p>点击左上角 “+ New Chat” 开始对话</p>
+            <p>{t('emptyHint')}</p>
           </div>
         )}
       </main>
+      {showSettings && (
+        <SettingsModal
+          models={models}
+          onClose={() => setShowSettings(false)}
+          onSave={handleSaveModels}
+        />
+      )}
     </div>
   )
 }

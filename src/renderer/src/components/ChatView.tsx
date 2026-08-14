@@ -1,43 +1,33 @@
-import type { Chat } from '@shared/types'
+import type { Chat, ModelConfig } from '@shared/types'
 import ModelSelector from './ModelSelector'
 import MessageList from './MessageList'
 import Composer from './Composer'
 
 interface Props {
   chat: Chat
+  models: ModelConfig[]
   streamingText: string
   errorText: string
   isStreaming: boolean
   onSend: (text: string) => void
   onStop: () => void
   onModelChange: (model: string) => void
-  onPickFolder: () => void
 }
 
 export default function ChatView({
   chat,
+  models,
   streamingText,
   errorText,
   isStreaming,
   onSend,
   onStop,
-  onModelChange,
-  onPickFolder
+  onModelChange
 }: Props): React.JSX.Element {
   return (
     <div className="chat-view">
       <header className="chat-header">
-        <div className="chat-header-left">
-          <ModelSelector model={chat.model} onChange={onModelChange} />
-        </div>
-        <div className="chat-header-right">
-          <span className="project-path" title={chat.projectPath}>
-            {chat.projectPath}
-          </span>
-          <button className="folder-btn small" onClick={onPickFolder}>
-            Choose Folder
-          </button>
-        </div>
+        <ModelSelector model={chat.model} models={models} onChange={onModelChange} />
       </header>
       <MessageList
         messages={chat.messages}
@@ -45,12 +35,7 @@ export default function ChatView({
         errorText={errorText}
         isStreaming={isStreaming}
       />
-      <Composer
-        isStreaming={isStreaming}
-        disabled={false}
-        onSend={onSend}
-        onStop={onStop}
-      />
+      <Composer isStreaming={isStreaming} disabled={false} onSend={onSend} onStop={onStop} />
     </div>
   )
 }

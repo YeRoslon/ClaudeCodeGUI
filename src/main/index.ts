@@ -5,11 +5,12 @@ import { randomUUID } from 'crypto'
 import { ClaudeRunner } from './claudeRunner'
 import { Store } from './store'
 import {
-  DEFAULT_MODEL,
+  DEFAULT_MODEL_ID,
   DEFAULT_TITLE,
   type AppState,
   type Chat,
-  type ClaudeEvent
+  type ClaudeEvent,
+  type ModelConfig
 } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
@@ -55,17 +56,28 @@ function createWindow(): void {
 function registerIpcHandlers(): void {
   ipcMain.handle('chats:get-state', (): AppState => store.getState())
 
-  ipcMain.handle('chats:create', async (_e, projectPath?: string): Promise<Chat> => {
-    const state = store.getState()
-    const path =
-      projectPath && projectPath.trim().length > 0
-        ? projectPath
-        : (state.lastProjectPath ?? homedir())
+  ipcMain.handle('models:get', (): ModelConfig[] => store.getModels())
+
+  ipcMain.handle('models:save', async (_e, models: ModelConfig[]): Promise<ModelConfig[]> => {
+    const cleaned = models
+      .map((m) => ({
+        ...m,
+        id: m.id.trim() || randomUUID(),
+        model: m.model.trim(),
+        label: m.label.trim() || m.model.trim(),
+        baseUrl: m.baseUrl?.trim() || undefined,
+        authToken: m.authToken?.trim() || undefined,
+        builtin: m.builtin === true
+      }))
+      .filter((m) => m.id && m.model)
+    return store.saveModels(cleaned)
+  })
+
+  ipcMain.handle('chats:create', async (): Promise<Chat> => {
     const chat: Chat = {
       id: randomUUID(),
       title: DEFAULT_TITLE,
-      model: DEFAULT_MODEL,
-      projectPath: path,
+      model: DEFAULT_MODEL_ID,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       messages: []
@@ -90,15 +102,6 @@ function registerIpcHandlers(): void {
     'chats:update-model',
     async (_e, payload: { chatId: string; model: string }): Promise<void> => {
       await store.updateChat(payload.chatId, { model: payload.model })
-      broadcastState()
-    }
-  )
-
-  ipcMain.handle(
-    'chats:set-project-path',
-    async (_e, payload: { chatId: string; projectPath: string }): Promise<void> => {
-      await store.setLastProjectPath(payload.projectPath)
-      await store.updateChat(payload.chatId, { projectPath: payload.projectPath })
       broadcastState()
     }
   )
@@ -136,12 +139,15 @@ function registerIpcHandlers(): void {
       await store.updateChat(chat.id, { messages: chat.messages, title: chat.title })
       broadcastState()
 
+      const modelCfg = store.getModels().find((m) => m.id === chat.model)
       runner.sendMessage({
         chatId: chat.id,
         message: trimmed,
-        model: chat.model,
-        projectPath: chat.projectPath,
-        resumeSessionId: chat.claudeSessionId
+        model: modelCfg?.model ?? chat.model,
+        projectPath: store.getState().lastProjectPath ?? homedir(),
+        resumeSessionId: chat.claudeSessionId,
+        baseUrl: modelCfg?.baseUrl,
+        authToken: modelCfg?.authToken
       })
     }
   )
@@ -177,6 +183,7 @@ function wireRunnerEvents(): void {
 
 app.whenReady().then(async () => {
   await store.load()
+  await store.loadConfig()
   registerIpcHandlers()
   wireRunnerEvents()
   createWindow()

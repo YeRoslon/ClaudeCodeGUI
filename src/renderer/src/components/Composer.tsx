@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useI18n } from '../i18n'
 
 interface Props {
   isStreaming: boolean
@@ -13,6 +14,7 @@ export default function Composer({
   onSend,
   onStop
 }: Props): React.JSX.Element {
+  const { t } = useI18n()
   const [text, setText] = useState('')
 
   const canSend = !disabled && !isStreaming && text.trim().length > 0
@@ -34,7 +36,7 @@ export default function Composer({
     <div className="composer">
       <textarea
         className="composer-input"
-        placeholder="Message Claude Code…（Enter 发送，Shift + Enter 换行）"
+        placeholder={t('composerPlaceholder')}
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
@@ -42,12 +44,12 @@ export default function Composer({
         rows={3}
       />
       {isStreaming ? (
-        <button className="stop-btn" onClick={onStop} title="停止生成">
-          Stop
+        <button className="stop-btn" onClick={onStop} title={t('stop')}>
+          {t('stop')}
         </button>
       ) : (
         <button className="send-btn" onClick={submit} disabled={!canSend}>
-          Send
+          {t('send')}
         </button>
       )}
     </div>

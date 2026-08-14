@@ -7,9 +7,14 @@ import type { ClaudeEvent } from '../shared/types'
 export interface SendRequest {
   chatId: string
   message: string
+  /** 实际传给 --model 的模型名（主进程已解析） */
   model: string
   projectPath: string
   resumeSessionId?: string
+  /** 可选：覆盖 ANTHROPIC_BASE_URL（程序内配置） */
+  baseUrl?: string
+  /** 可选：覆盖 ANTHROPIC_AUTH_TOKEN（程序内配置） */
+  authToken?: string
 }
 
 interface ActiveRun {
@@ -56,18 +61,30 @@ export class ClaudeRunner extends EventEmitter {
       '--output-format',
       'stream-json',
       '--verbose',
-      '--include-partial-messages'
+      '--include-partial-messages',
+      // 只放开只读联网工具（查天气、搜资料），其余工具保持默认权限
+      '--allowedTools',
+      'WebSearch WebFetch'
     ]
     if (req.resumeSessionId) {
       args.push('--resume', req.resumeSessionId)
     }
-    args.push(req.message)
+
+    // 程序内配置的接口地址 / API Key 优先于环境变量；没配就继承进程环境
+    const env: NodeJS.ProcessEnv = { ...process.env }
+    if (req.baseUrl) env.ANTHROPIC_BASE_URL = req.baseUrl
+    if (req.authToken) env.ANTHROPIC_AUTH_TOKEN = req.authToken
 
     const child = spawn(this.claudeBin, args, {
       cwd: req.projectPath,
-      env: process.env,
+      env,
       shell: false
     })
+
+    // -p 模式下消息通过 stdin 传入（新版本 claude CLI 不接受命令行位置参数作为提示词）
+    child.stdin.on('error', () => {})
+    child.stdin.write(req.message)
+    child.stdin.end()
 
     const run: ActiveRun = {
       chatId: req.chatId,

@@ -1,18 +1,18 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AppState, Chat, ClaudeEvent } from '../shared/types'
+import type { AppState, Chat, ClaudeEvent, ModelConfig } from '../shared/types'
 
 const api = {
   getState: (): Promise<AppState> => ipcRenderer.invoke('chats:get-state'),
-  createChat: (projectPath?: string): Promise<Chat> =>
-    ipcRenderer.invoke('chats:create', projectPath),
+  getModels: (): Promise<ModelConfig[]> => ipcRenderer.invoke('models:get'),
+  saveModels: (models: ModelConfig[]): Promise<ModelConfig[]> =>
+    ipcRenderer.invoke('models:save', models),
+  createChat: (): Promise<Chat> => ipcRenderer.invoke('chats:create'),
   setActiveChat: (chatId: string): Promise<void> =>
     ipcRenderer.invoke('chats:set-active', chatId),
   deleteChat: (chatId: string): Promise<void> =>
     ipcRenderer.invoke('chats:delete', chatId),
   updateModel: (chatId: string, model: string): Promise<void> =>
     ipcRenderer.invoke('chats:update-model', { chatId, model }),
-  setProjectPath: (chatId: string, projectPath: string): Promise<void> =>
-    ipcRenderer.invoke('chats:set-project-path', { chatId, projectPath }),
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke('dialog:pick-folder'),
   send: (chatId: string, message: string): Promise<void> =>
     ipcRenderer.invoke('chat:send', { chatId, message }),
